@@ -1,0 +1,234 @@
+---
+title: "BUAN6357_Shiny2_Yadav"
+author: "Mayank Mohan Yadav"
+date: "10/30/2020"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+install.packages("ggplot")
+if(!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse,dplyr,leaflet, reshape, gplots, ggmap,shiny, openxlsx,DT,rgdal,leaflet.extras,data.table,ggiraph,highcharter)
+```
+
+```{r}
+library(leaflet)
+library(highcharter)
+library(dplyr)
+library(leaflet.extras)
+library(DT)
+library(mice)
+library(chron)
+library(shiny)
+library(data.table)
+library(sp)
+library(rgdal)
+library(ggplot2)
+library(lubridate)
+library(stringr)
+library(plyr)
+library(reshape2)
+library(tidyr)
+library(viridis)
+library(plotly)
+library(xts)
+library(maps)
+library(ggmap)
+library(gridExtra)
+```
+
+```{r}
+crimes <- read.csv("Crimes_2020.csv") #importing
+crimes.df <- data.frame(crimes) #converting to data frame
+dim(crimes)
+```
+
+```{r}
+crimes.df$month<-format(as.Date(crimes.df$Date,format="%m/%d/%Y"),"%m")
+crimes.df$date<-format(as.Date(crimes.df$Date,format="%m/%d/%Y"),"%m/%d/%Y")
+crimes.df$day<-format(as.Date(crimes.df$Date,format="%m/%d/%Y"),"%d")
+crimes.df<-crimes.df[rowSums(is.na(crimes.df)) == 0,]
+
+crimes.df<-mutate(crimes.df, Date = mdy_hm(Date),
+                 time  = str_c(hour(Date)))
+
+
+#crimes1.df <- data.frame(crimes.df)
+loc <- crimes.df %>% group_by(Location.Description) %>% summarise(Total = n()) %>% arrange(desc(Total))
+
+agr <- crimes.df %>% group_by(Primary.Type) %>% summarise(Total = n()) %>% arrange(desc(Total))
+
+agr1<-crimes.df  %>% group_by(Primary.Type,time) %>% summarise(Total=n()) %>% arrange(desc(Total))
+
+```
+
+
+```{r}
+crimes.df1<-crimes.df %>% 
+   select(month,Primary.Type) %>% 
+   group_by (month,Primary.Type) %>% 
+   summarise(TotalCrimes = n())
+#crimes.df1<-crimes.df1[rowSums(is.na(crimes.df1)) == 0,]
+
+n<-hchart(loc[1:20,], "column", hcaes(x = Location.Description, y = Total, color = Total)) %>%
+  hc_title(text = "Crime Frequency by Location") 
+    n
+    
+  
+```
+```{r}
+p<-ggplot(data=crimes.df1, aes(x=crimes.df1$Primary.Type, 
+                         y=crimes.df1$TotalCrimes,
+                         fill = crimes.df1$month
+ ))+xlab("Crime Type")+ylab("Number of crimes")+labs(fill="Month")+
+   scale_y_continuous(limits = c(0,30000), breaks=seq(0,30000,2500))
+ p + geom_bar(stat = "identity")+
+   theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, hjust = 0.5))
+
+```
+
+```{r}
+crimesjan<-crimes.df[crimes.df$month=="01",]
+chi_dat = as.data.table(crimesjan)
+chi_dat<-chi_dat[rowSums(is.na(chi_dat)) == 0,]
+
+#make data spatial
+coordinates(chi_dat) = c("Longitude","Latitude")
+crs.geo1 = CRS("+proj=longlat")  
+proj4string(chi_dat) = crs.geo1  
+
+plot(chi_dat, pch = 20, col = "steelblue")
+
+chicago = readOGR(dsn = "C:/Users/mayan/Desktop/Advanced BA with R/Assignments/Shiny 2", layer = "geo_export_89542751-90c1-4780-afcd-132091dda670")
+plot(chicago)
+points(chi_dat, pch = 20, col = "orange")
+
+
+```
+
+```{r}
+chimap<-function(month1,day1){
+  
+  crimeselected <- crimes.df[crimes.df$month==month1,]
+  crimeselected<-crimeselected[crimeselected$day==day1,]
+    
+    
+    #crimeselected<-subset(crimes.df, crimes.df$date == "03")
+    #crimeselected <- crimes.df[crimes.df$month==input$month] 
+    #crimeselected <- crimeselected[crimeselected$day==input$day]
+     
+     #crimeselected <- subset(crimes.df, crimes.df$date == input$date)
+     chi_dat1 = as.data.table(crimeselected)
+     chi_dat1<-chi_dat1[sum(is.na(chi_dat1)) == 0,]
+
+#make data spatial
+coordinates(chi_dat1) = c("Longitude","Latitude")
+crs.geo1 = CRS("+proj=longlat")  
+proj4string(chi_dat1) = crs.geo1  
+
+plot(chi_dat1, pch = 20, col = "steelblue")
+
+chicago = readOGR(dsn = "C:/Users/mayan/Desktop/Advanced BA with R/Assignments/Shiny 2", layer = "geo_export_89542751-90c1-4780-afcd-132091dda670")
+plot(chicago)
+points(chi_dat1, pch = 20, col = "orange")
+
+
+
+}
+```
+
+
+
+
+```{r}
+ui <- fluidPage(
+  
+  titlePanel("BUAN6357_Shiny2_Yadav"),
+  tabsetPanel(
+    tabPanel("Barchart",
+             fluidRow(h3("Stacked barchart for Crime Type and Month combinations")),
+             
+             mainPanel(
+               plotOutput("stackedbarplot")
+             )),
+             
+    tabPanel("Crimes by Date on Map",
+             fluidRow(h3("Crimes by date")),
+             sidebarLayout(
+               sidebarPanel(
+                 selectInput(
+                   inputId = "month",
+                    label = "Select month",
+                   choices = sort(unique(crimes.df$month))),
+                 selectInput(
+                   inputId = "day",
+                    label = "Select day",
+                   choices = sort(unique(crimes.df$day)))
+              ),
+             mainPanel(
+               plotOutput("chi.map")
+             )
+             )
+           ),
+    tabPanel("Heatmap",
+             fluidRow(h3("Heatmap of Crime type by the hour of day")),
+             
+             mainPanel(
+               plotOutput("heat")
+             )
+             ),
+    tabPanel("hchart",
+             fluidRow(h3("Zoning in on the locations of Chicago Crimes")),
+             
+             mainPanel(
+               plotOutput("hichart")
+               #plotOutput("high")
+             )
+             )
+           )
+  )
+
+server <- function(input,output){
+  
+  output$stackedbarplot <- renderPlot({
+  
+      
+ p<-ggplot(data=crimes.df1, aes(x=crimes.df1$Primary.Type, 
+                         y=crimes.df1$TotalCrimes,
+                         fill = crimes.df1$month
+ ))+xlab("Crime Type")+ylab("Number of crimes")+labs(fill="Month")+
+   scale_y_continuous(limits = c(0,30000), breaks=seq(0,30000,2500))
+ p + geom_bar(stat = "identity")+
+   theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, hjust = 0.5))
+    })
+   
+  output$chi.map <- renderPlot({
+    chimap(input$month, input$day)
+  })
+  
+  
+  output$heat <- renderPlot({
+  h1<-melt(crimes.df)    
+ k<-ggplot(agr1, aes(time, Primary.Type,fill=Total)) +
+  geom_tile( colour = "white") +
+  scale_fill_gradient(low = "white", high = "red")
+  k  
+    
+  })
+  
+  output$hichart <- renderHighchart({
+    
+    n
+  })
+  
+}
+
+shinyApp(ui=ui, server = server)
+```
